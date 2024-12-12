@@ -2,6 +2,8 @@ import fitz
 import io
 from PIL import Image
 
+import sys
+
 import argparse
 from pathlib import Path
 
@@ -14,7 +16,7 @@ def extract_images_from_pdf(pdf_file: Path, output_dir: Path) -> None:
 
     # open the file
     pdf = fitz.open(pdf_file)
-    print(f"[+] Extracting images from {pdf_file}")
+    print(f"\n[i] Extracting images from {pdf_file}")
 
     page_leading_zeroes = len(str(len(pdf)))
 
@@ -30,7 +32,7 @@ def extract_images_from_pdf(pdf_file: Path, output_dir: Path) -> None:
             try:
                 image = Image.open(io.BytesIO(image_bytes))
             except Image.DecompressionBombError as e:
-                print(f"[!] Error opening image {image_index} from page {page_num + 1}: {e}")
+                print(f"[✗] Error opening image {image_index} from page {page_num + 1}: {e}")
                 print(f"[!] Consider using the --allow-large-images flag to remove the limit on the maximum image size that can be opened")
                 continue
 
@@ -51,7 +53,7 @@ def get_output_dir(output_dir_str: str) -> Path:
         if not output_dir.exists():
             output_dir.mkdir(parents=True)
     except OSError as e:
-        print(f"[!] Error creating output directory: {e}")
+        print(f"[✗] Error creating output directory: {e}")
         print(f"[!] Defaulting to current directory.")
         output_dir = Path.cwd() / "output"
         if not output_dir.exists():
@@ -68,7 +70,6 @@ if __name__ == "__main__":
     parser.add_argument("--allow-large-images", action='store_true', help="Removes the limit on the maximum image size that can be opened")
 
     args = parser.parse_args()
-    print(args)
 
     file_path_str = args.file_path
     dir_path_str = args.dir
@@ -76,14 +77,14 @@ if __name__ == "__main__":
     allow_large_images = args.allow_large_images
 
     if allow_large_images:
-        Image.MAX_IMAGE_PIXELS = 933120000 # Allows for very large images to be opened
+        Image.MAX_IMAGE_PIXELS = 933120000 # Allows for large images to be opened and saved
 
     if file_path_str != None and dir_path_str != None:
-        print("Please provide either a file path or a directory path, not both.")
-        exit(2)
+        print("[✗] Please provide either a file path or a directory path, not both.")
+        sys.exit(2)
 
     if file_path_str == None and dir_path_str == None:
-        print("No path provided, defaulting to current directory.")
+        print("[i] No path provided, defaulting to current directory.")
         dir_path_str = str(Path.cwd())
 
     # Validate output directory
@@ -91,24 +92,24 @@ if __name__ == "__main__":
         output_dir = get_output_dir(output_dir_str)
     except NotADirectoryError as e:
         print(f"Error: {e}")
-        exit(1)
+        sys.exit(1)
 
     # Case 1: Extract images from a single PDF file
 
     if file_path_str != None:
         file_path = Path(file_path_str)
         if not file_path.exists():
-            print(f"File not found: {file_path}")
-            exit(1)
+            print(f"[✗] File not found: {file_path}")
+            sys.exit(1)
         elif not file_path.is_file() or not file_path.suffix.lower() == ".pdf":
-            print(f"Invalid file: {file_path}, Must have .pdf extension")
-            exit(1)
+            print(f"[✗] Invalid file: {file_path}, Must have .pdf extension")
+            sys.exit(1)
 
         extract_images_from_pdf(file_path, output_dir)
-        print("Finished extracting images")
-        print(f"[+] Images extracted from {file_path}")
-        print(f"[+] Images saved to {output_dir}")
-        exit(0)
+        print("\n[✓] Finished extracting images")
+        print(f"[i] Images extracted from {file_path}")
+        print(f"[i] Images saved to {output_dir}")
+        sys.exit(0)
 
     # Case 2: Extract images from all PDF files in a directory
 
@@ -116,17 +117,17 @@ if __name__ == "__main__":
         dir_path = Path(dir_path_str)
         if not dir_path.exists():
             print(f"Directory not found: {dir_path}")
-            exit(1)
+            sys.exit(1)
         elif not dir_path.is_dir():
             print(f"Invalid directory: {dir_path}")
-            exit(1)
+            sys.exit(1)
 
         pdf_files = [file for file in dir_path.iterdir() if file.is_file() and file.suffix.lower() == ".pdf"]
         print(f"Found {len(pdf_files)} PDF files in {dir_path}")
 
         for file in pdf_files:
             extract_images_from_pdf(file, output_dir)
-            print(f"[+] Images extracted from {file}")
-        print("Finished extracting images")
-        print(f"[+] Images saved to {output_dir}")
-        exit(0)
+            print(f"[i] Images extracted from {file}")
+        print("\n[✓] Finished extracting images")
+        print(f"[i] Images saved to {output_dir}")
+        sys.exit(0)
