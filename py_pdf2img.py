@@ -1,11 +1,24 @@
+import sys
+import warnings
+
 import fitz 
 import io
 from PIL import Image
 
-import sys
-
 import argparse
 from pathlib import Path
+
+from rich.console import Console
+from rich.theme import Theme
+
+custom_theme = Theme({
+    "info": "bold cyan",
+    "warning": "bold gold1",
+    "error": "bold dark_red",
+    "success": "bold green"
+})
+console = Console(theme=custom_theme)
+
 
 def extract_images_from_pdf(pdf_file: Path, output_dir: Path) -> None:
     # validate file path
@@ -16,9 +29,12 @@ def extract_images_from_pdf(pdf_file: Path, output_dir: Path) -> None:
 
     # open the file
     pdf = fitz.open(pdf_file)
-    print(f"\n[i] Extracting images from {pdf_file}")
+
+    console.print(f"\n[info]\[i][/] Extracting images from [i]{pdf_file}[/]")
 
     page_leading_zeroes = len(str(len(pdf)))
+
+    extracted_count = 0
 
     for page_num in range(len(pdf)):
         page = pdf[page_num]
@@ -30,14 +46,22 @@ def extract_images_from_pdf(pdf_file: Path, output_dir: Path) -> None:
             image_bytes = base_image["image"]
             image_ext = base_image["ext"]
             try:
-                image = Image.open(io.BytesIO(image_bytes))
+
+                with warnings.catch_warnings(record=True) as w:
+                    warnings.simplefilter("always", Image.DecompressionBombWarning)
+                    image = Image.open(io.BytesIO(image_bytes))
+                    if len(w) > 0:
+                        console.print(f"[warning][!][/] Warning opening image {image_index} from page {page_num + 1}: {w[0].message}")
+
             except Image.DecompressionBombError as e:
-                print(f"[✗] Error opening image {image_index} from page {page_num + 1}: {e}")
-                print(f"[!] Consider using the --allow-large-images flag to remove the limit on the maximum image size that can be opened")
+                console.print(f"[error][✗][/] Error opening image {image_index} from page {page_num + 1}: {e}")
+                console.print(f"[warning][!][/] Consider using the [bold]--allow-large-images[/] flag to remove the limit on the maximum image size that can be opened.")
                 continue
 
             output_file = output_dir / f"{pdf_file.stem}_page{str(page_num + 1).zfill(page_leading_zeroes)}_img{str(image_index).zfill(img_leading_zeroes)}.{image_ext}"
             image.save(open(output_file, "wb"))
+            extracted_count += 1
+    console.print(f"[info]\[i][/] {extracted_count} images extracted from [i]{pdf_file}[/]")
 
 def get_output_dir(output_dir_str: str) -> Path:
     if output_dir_str == None or output_dir_str == "":
@@ -53,8 +77,8 @@ def get_output_dir(output_dir_str: str) -> Path:
         if not output_dir.exists():
             output_dir.mkdir(parents=True)
     except OSError as e:
-        print(f"[✗] Error creating output directory: {e}")
-        print(f"[!] Defaulting to current directory.")
+        console.print(f"[error][✗][/] Error creating output directory: {e}")
+        console.print(f"[warning][!][/] Defaulting to current directory.")
         output_dir = Path.cwd() / "output"
         if not output_dir.exists():
             output_dir.mkdir(parents=True)
@@ -80,18 +104,18 @@ if __name__ == "__main__":
         Image.MAX_IMAGE_PIXELS = 933120000 # Allows for large images to be opened and saved
 
     if file_path_str != None and dir_path_str != None:
-        print("[✗] Please provide either a file path or a directory path, not both.")
+        console.print("[error][✗][/] Please provide either a file path or a directory path, not both.")
         sys.exit(2)
 
     if file_path_str == None and dir_path_str == None:
-        print("[i] No path provided, defaulting to current directory.")
+        console.print("[info]\[i][/] No path provided, defaulting to current directory.")
         dir_path_str = str(Path.cwd())
 
     # Validate output directory
     try:
         output_dir = get_output_dir(output_dir_str)
     except NotADirectoryError as e:
-        print(f"Error: {e}")
+        console.print(f"Error: {e}")
         sys.exit(1)
 
     # Case 1: Extract images from a single PDF file
@@ -99,16 +123,16 @@ if __name__ == "__main__":
     if file_path_str != None:
         file_path = Path(file_path_str)
         if not file_path.exists():
-            print(f"[✗] File not found: {file_path}")
+            console.print(f"[error][✗][/] File not found: {file_path}")
             sys.exit(1)
         elif not file_path.is_file() or not file_path.suffix.lower() == ".pdf":
-            print(f"[✗] Invalid file: {file_path}, Must have .pdf extension")
+            console.print(f"[error][✗][/] Invalid file: {file_path}, Must have .pdf extension")
             sys.exit(1)
 
-        extract_images_from_pdf(file_path, output_dir)
-        print("\n[✓] Finished extracting images")
-        print(f"[i] Images extracted from {file_path}")
-        print(f"[i] Images saved to {output_dir}")
+        with console.status("[bold green]Processing...") as status:
+            extract_images_from_pdf(file_path, output_dir)
+        console.print("\n[success][✓][/] Finished extracting images")
+        console.print(f"[info]\[i][/] Images saved to [i]{output_dir}[/]")
         sys.exit(0)
 
     # Case 2: Extract images from all PDF files in a directory
@@ -116,18 +140,18 @@ if __name__ == "__main__":
     if dir_path_str != None:
         dir_path = Path(dir_path_str)
         if not dir_path.exists():
-            print(f"Directory not found: {dir_path}")
+            console.print(f"[error][✗][/] Directory not found: {dir_path}")
             sys.exit(1)
         elif not dir_path.is_dir():
-            print(f"Invalid directory: {dir_path}")
+            console.print(f"[error][✗][/] Invalid directory: {dir_path}")
             sys.exit(1)
 
         pdf_files = [file for file in dir_path.iterdir() if file.is_file() and file.suffix.lower() == ".pdf"]
-        print(f"Found {len(pdf_files)} PDF files in {dir_path}")
-
-        for file in pdf_files:
-            extract_images_from_pdf(file, output_dir)
-            print(f"[i] Images extracted from {file}")
-        print("\n[✓] Finished extracting images")
-        print(f"[i] Images saved to {output_dir}")
+        console.print(f"[info]\[i][/] Found {len(pdf_files)} PDF files in [i]{dir_path}[/]")
+        with console.status("[bold green]Processing...") as status:
+            for file in pdf_files:
+                extract_images_from_pdf(file, output_dir)
+            
+        console.print("\n[success][✓][/] Finished extracting images")
+        console.print(f"[info]\[i][/] Images saved to [i]{output_dir}[/]\n")
         sys.exit(0)
