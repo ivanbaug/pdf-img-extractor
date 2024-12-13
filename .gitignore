@@ -2,3 +2,4 @@ venv/*
 output/*
 build/*
 dist/*
+py_pdf2img.spec
